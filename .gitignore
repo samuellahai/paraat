@@ -22,3 +22,8 @@ npm-debug.log*
 # Vite cache
 .vite/
 .claude/
+.vercel/
+
+# Socket files from dev server
+$PORT
+scripts/
