@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import {
   Plus, Edit2, Trash2, Package, Camera, X, Check,
-  AlertCircle, Search, ChevronDown, Scan, Tag, Clock,
+  AlertCircle, Search, ChevronDown, Scan, Clock,
   LayoutList, Boxes, ClipboardList, QrCode,
 } from 'lucide-react'
 import jsQR from 'jsqr'
