@@ -1,6 +1,7 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, MapPin, Clock, Phone, Tag, Info, ChevronRight } from 'lucide-react'
+import { ArrowLeft, MapPin, Clock, Phone, Tag, Info, ChevronRight, Heart } from 'lucide-react'
 import type { StockLevel } from '../types'
+import { useFavorites } from '../hooks/useFavorites'
 
 const STOCK_DOT: Record<StockLevel, string> = {
   high: 'bg-green-500',
@@ -26,6 +27,8 @@ export default function ProductDetail() {
   const { productId } = useParams<{ productId: string }>()
   const navigate = useNavigate()
   const product = products.find((p) => p.id === productId)
+  const { isFav, toggle } = useFavorites()
+  const fav = product ? isFav(product.id) : false
 
   if (!product) {
     return (
@@ -59,8 +62,15 @@ export default function ProductDetail() {
         >
           <ArrowLeft className="w-4 h-4 text-gray-700" />
         </button>
+        <button
+          type="button"
+          onClick={() => toggle(product.id)}
+          className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/90 shadow flex items-center justify-center"
+        >
+          <Heart className={`w-4 h-4 ${fav ? 'fill-red-500 text-red-500' : 'text-gray-500'}`} />
+        </button>
         {!inStock && (
-          <div className="absolute top-4 right-4 bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full">
+          <div className="absolute top-4 right-16 bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full">
             Vergriffen
           </div>
         )}

@@ -3,6 +3,7 @@ import { useParams, useLocation, Link } from 'react-router-dom'
 import { CheckCircle, MapPin, Navigation, Clock, Phone, Share2, Home } from 'lucide-react'
 import QRCode from 'qrcode'
 import { products } from '../data/mockData'
+import { useSavedReservations } from '../hooks/useSavedReservations'
 
 interface LocationState {
   customerName?: string
@@ -26,6 +27,7 @@ export default function Confirmation() {
   const location = useLocation()
   const state = (location.state as LocationState) ?? {}
   const product = products.find((p) => p.id === productId)
+  const { add } = useSavedReservations()
 
   const codeRef = useRef(`PAR-${Math.random().toString(36).slice(2, 8).toUpperCase()}`)
   const reservationCode = codeRef.current
@@ -40,6 +42,22 @@ export default function Confirmation() {
   })
 
   const qrDataUrl = useQRCode(reservationCode)
+
+  const savedRef = useRef(false)
+  useEffect(() => {
+    if (!product || savedRef.current) return
+    savedRef.current = true
+    add({
+      code: reservationCode,
+      productId: product.id,
+      productName: product.name,
+      storeName: product.store.name,
+      storeAddress: `${product.store.address}, ${product.store.city}`,
+      customerName: state.customerName ?? '',
+      reservedAt: new Date().toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!product) {
     return (

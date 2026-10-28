@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
-import { MapPin, Clock, Tag, ChevronRight } from 'lucide-react'
+import { MapPin, Clock, Tag, ChevronRight, Heart } from 'lucide-react'
 import type { Product, StockLevel } from '../types'
 import { formatDistance, formatStockAge } from '../data/mockData'
+import { useFavorites } from '../hooks/useFavorites'
 
 const STOCK_BADGE: Record<StockLevel, { dot: string; label: string; text: string }> = {
   high: { dot: 'bg-green-500',  label: 'Verfügbar', text: 'text-green-700' },
@@ -17,6 +18,8 @@ interface ProductCardProps {
 
 export default function ProductCard({ product, distance, highlight }: ProductCardProps) {
   const inStock = product.available && product.stock > 0
+  const { isFav, toggle } = useFavorites()
+  const fav = isFav(product.id)
 
   return (
     <div
@@ -35,11 +38,18 @@ export default function ProductCard({ product, distance, highlight }: ProductCar
             className="w-20 h-20 rounded-xl object-cover bg-gray-100"
             loading="lazy"
           />
-          {!inStock && (
+            {!inStock && (
             <div className="absolute inset-0 bg-white/70 rounded-xl flex items-center justify-center">
               <span className="text-[10px] font-bold text-red-500 uppercase tracking-wide">Vergriffen</span>
             </div>
           )}
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggle(product.id) }}
+            className="absolute -top-1.5 -right-1.5 w-7 h-7 rounded-full bg-white shadow flex items-center justify-center"
+          >
+            <Heart className={`w-3.5 h-3.5 ${fav ? 'fill-red-500 text-red-500' : 'text-gray-300'}`} />
+          </button>
         </Link>
 
         {/* Content */}

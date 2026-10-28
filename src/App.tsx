@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard'
 import ProductDetail from './pages/ProductDetail'
 import Account from './pages/Account'
 import StoreProfile from './pages/StoreProfile'
+import Meins from './pages/Meins'
 
 function AppLayout() {
   const location = useLocation()
@@ -26,6 +27,7 @@ function AppLayout() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/account" element={<Account />} />
         <Route path="/store/:storeId" element={<StoreProfile />} />
+        <Route path="/meins" element={<Meins />} />
       </Routes>
       {!hideNav && <BottomNav />}
     </>
