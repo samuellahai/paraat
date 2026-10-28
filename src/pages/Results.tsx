@@ -5,8 +5,8 @@ import ProductCard from '../components/ProductCard'
 import MapView from '../components/MapView'
 import { products, getDistance } from '../data/mockData'
 
-const USER_LAT = 52.536
-const USER_LNG = 13.415
+const USER_LAT = 52.3759
+const USER_LNG = 9.7320
 
 type SortKey = 'distance' | 'price_asc' | 'price_desc' | 'availability'
 
@@ -88,7 +88,7 @@ export default function Results() {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       {/* Top bar */}
-      <div className="fixed top-14 left-0 right-0 z-40 bg-white border-b border-gray-100 px-4 py-2">
+      <div className="fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-100 px-4 py-2">
         <div className="max-w-5xl mx-auto flex items-center gap-2">
           <button
             onClick={() => navigate('/')}
@@ -179,7 +179,7 @@ export default function Results() {
 
       {/* Content */}
       <div className={`pt-${showFilters ? '32' : '24'} px-4 pb-10 max-w-5xl mx-auto w-full`}
-        style={{ paddingTop: showFilters ? '7.5rem' : '5.5rem' }}
+        style={{ paddingTop: showFilters ? '6rem' : '4rem', paddingBottom: '70px' }}
       >
         {/* Context header */}
         <div className="mb-4 flex items-center justify-between">

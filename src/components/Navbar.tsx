@@ -11,7 +11,7 @@ export default function Navbar() {
           <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center">
             <MapPin className="w-4 h-4 text-white" strokeWidth={2.5} />
           </div>
-          <span className="font-bold text-xl text-gray-900 tracking-tight">Treffer</span>
+          <span className="font-bold text-xl text-gray-900 tracking-tight">Paraat</span>
         </Link>
 
         <div className="flex items-center gap-1">

@@ -1,18 +1,83 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Search, MapPin, Crosshair, ChevronDown, Zap } from 'lucide-react'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
+import { Crosshair } from 'lucide-react'
 import MapView from '../components/MapView'
-import { products } from '../data/mockData'
+import { products, getDistance, formatDistance, formatStockAge } from '../data/mockData'
+import type { StockLevel } from '../types'
 
-const CATEGORIES = ['Alle', 'Lebensmittel', 'Elektronik', 'Mode', 'Backwaren', 'Sport']
+const STOCK_DOT: Record<StockLevel, string> = {
+  high: 'bg-green-500',
+  low:  'bg-yellow-400',
+  none: 'bg-red-400',
+}
+const STOCK_LABEL: Record<StockLevel, string> = {
+  high: 'Verfügbar',
+  low:  'Wenige',
+  none: 'Nicht da',
+}
+const STOCK_TEXT: Record<StockLevel, string> = {
+  high: 'text-green-700',
+  low:  'text-yellow-700',
+  none: 'text-red-600',
+}
+
+const CATEGORIES = ['Alle', '🚲 Fahrrad', '🏋️ Sport', '🏠 Haushalt', '🥦 Lebensmittel']
+
+const SHEET_H = 490
+const PEEK_VIS = 65
+const MID_VIS = 275
+const SNAP_PEEK = SHEET_H - PEEK_VIS  // 425
+const SNAP_MID  = SHEET_H - MID_VIS   // 215
+const SNAP_FULL = 0
+
+const DEFAULT_LOC: [number, number] = [52.3759, 9.7320]
+
+const CATEGORY_EMOJI: Record<string, string> = {
+  Lebensmittel: '🥦',
+  Elektronik: '💻',
+  Mode: '👕',
+  Backwaren: '🍞',
+  Sport: '🏋️',
+}
 
 export default function Home() {
   const navigate = useNavigate()
-  const [query, setQuery] = useState('')
-  const [category, setCategory] = useState('Alle')
-  const [userLocation, setUserLocation] = useState<[number, number] | null>(null)
+  const [activeCategory, setActiveCategory] = useState('Alle')
+  const [userLocation, setUserLocation] = useState<[number, number]>(DEFAULT_LOC)
   const [locating, setLocating] = useState(false)
-  const [mapHeight, setMapHeight] = useState(360)
+
+  // Bottom sheet state
+  const [ty, setTy] = useState(SNAP_PEEK)
+  const [animating, setAnimating] = useState(false)
+  const dragRef = useRef<{ startY: number; startTY: number } | null>(null)
+
+  const clamp = (v: number) => Math.max(SNAP_FULL, Math.min(v, SNAP_PEEK))
+
+  const snapTo = useCallback((cur: number) => {
+    const snaps = [SNAP_PEEK, SNAP_MID, SNAP_FULL]
+    const best = snaps.reduce((a, b) => (Math.abs(b - cur) < Math.abs(a - cur) ? b : a))
+    setAnimating(true)
+    setTy(best)
+  }, [])
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    dragRef.current = { startY: e.clientY, startTY: ty }
+    setAnimating(false)
+    e.currentTarget.setPointerCapture(e.pointerId)
+    e.preventDefault()
+  }
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current || !e.currentTarget.hasPointerCapture(e.pointerId)) return
+    setTy(clamp(dragRef.current.startTY + (e.clientY - dragRef.current.startY)))
+  }
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return
+    e.currentTarget.releasePointerCapture(e.pointerId)
+    snapTo(ty)
+    dragRef.current = null
+  }
 
   const handleLocate = useCallback(() => {
     setLocating(true)
@@ -22,157 +87,217 @@ export default function Home() {
         setLocating(false)
       },
       () => {
-        // Fallback to Berlin center
-        setUserLocation([52.536, 13.415])
         setLocating(false)
       },
-      { timeout: 6000 }
+      { timeout: 6000, enableHighAccuracy: true }
     )
   }, [])
 
+  // Try geolocation on mount (silent)
   useEffect(() => {
-    // Set Berlin as default
-    setUserLocation([52.536, 13.415])
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setUserLocation([pos.coords.latitude, pos.coords.longitude]),
+        () => { /* keep default */ },
+        { timeout: 5000 }
+      )
+    }
   }, [])
 
-  // Responsive map height
-  useEffect(() => {
-    const update = () => setMapHeight(window.innerHeight < 700 ? 280 : 360)
-    update()
-    window.addEventListener('resize', update)
-    return () => window.removeEventListener('resize', update)
-  }, [])
+  const visibleHeight = SHEET_H - ty
+  const isExpanded = visibleHeight >= MID_VIS - 30
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    const params = new URLSearchParams()
-    if (query) params.set('q', query)
-    if (category !== 'Alle') params.set('category', category)
-    navigate(`/results?${params.toString()}`)
-  }
-
-  const availableCount = products.filter((p) => p.available && p.stock > 0).length
+  const availableProducts = products.filter((p) => p.available && p.stock > 0)
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50">
-      {/* Hero */}
-      <div className="bg-gradient-to-br from-brand-500 via-brand-600 to-orange-700 pt-20 pb-6 px-4">
-        <div className="max-w-xl mx-auto text-center">
-          <div className="inline-flex items-center gap-1.5 bg-white/20 text-white text-xs font-semibold px-3 py-1 rounded-full mb-4">
-            <Zap className="w-3 h-3" />
-            {availableCount} Produkte verfügbar in Berlin
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-white leading-tight mb-2">
-            Finde lokale Produkte.<br />
-            <span className="text-orange-200">Sofort reservieren.</span>
-          </h1>
-          <p className="text-orange-100 text-sm mb-6">
-            Entdecke verfügbare Produkte in Läden um dich herum und reserviere sie für nur 2 €.
-          </p>
+    <div className="fixed inset-0 overflow-hidden bg-gray-200">
+      {/* Full-screen map */}
+      <div className="absolute inset-0">
+        <MapView products={products} userLocation={userLocation} />
+      </div>
 
-          {/* Search form */}
-          <form onSubmit={handleSearch} className="bg-white rounded-2xl shadow-xl p-3 flex flex-col sm:flex-row gap-2">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Produkt suchen..."
-                className="w-full pl-9 pr-3 py-2.5 text-sm rounded-xl bg-gray-50 focus:bg-white border border-transparent focus:border-brand-300 focus:outline-none transition-colors"
-              />
-            </div>
-            <div className="relative">
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-2.5 text-sm rounded-xl bg-gray-50 border border-transparent focus:border-brand-300 focus:outline-none transition-colors cursor-pointer"
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            </div>
+      {/* Top overlay gradient */}
+      <div
+        className="absolute top-0 left-0 right-0 z-20 px-3 pt-3 pb-4"
+        style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, transparent 100%)' }}
+      >
+        {/* App name row */}
+        <div className="flex items-center justify-between mb-2">
+          <span
+            className="text-xl font-black tracking-wide"
+            style={{ color: '#E05C00', textShadow: '0 1px 8px rgba(0,0,0,0.4)' }}
+          >
+            Paraat
+          </span>
+          <div className="flex items-center gap-2">
+            {/* Locate me */}
             <button
-              type="submit"
-              className="bg-brand-500 hover:bg-brand-600 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-colors whitespace-nowrap"
+              onClick={handleLocate}
+              disabled={locating}
+              className="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg bg-white/90"
+              aria-label="Standort ermitteln"
             >
-              Suchen
+              <Crosshair className={`w-4 h-4 ${locating ? 'animate-spin text-brand-500' : 'text-gray-600'}`} />
             </button>
-          </form>
+            {/* Filter */}
+            <button
+              className="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0"
+              style={{ background: '#E05C00' }}
+              aria-label="Filter"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M3 6h18M7 12h10M11 18h2" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Search bar */}
+        <div className="relative">
+          <svg
+            className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+            width="12" height="12" viewBox="0 0 16 16" fill="none"
+          >
+            <circle cx="7" cy="7" r="5" stroke="#aaa" strokeWidth="1.5" />
+            <path d="M11 11l3 3" stroke="#aaa" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          <input
+            readOnly
+            placeholder="Produkt suchen..."
+            className="w-full rounded-xl py-2 pl-8 pr-3 text-sm text-gray-500 bg-white shadow-md outline-none cursor-pointer"
+            onClick={() => navigate('/results')}
+          />
         </div>
       </div>
 
-      {/* Map */}
-      <div className="relative px-4 -mt-4 max-w-5xl mx-auto w-full">
-        <div
-          className="w-full rounded-2xl overflow-hidden shadow-xl border border-gray-100"
-          style={{ height: mapHeight }}
-        >
-          <MapView products={products} userLocation={userLocation} />
-        </div>
-
-        {/* Locate button */}
-        <button
-          onClick={handleLocate}
-          disabled={locating}
-          className="absolute bottom-4 right-8 flex items-center gap-1.5 bg-white shadow-lg border border-gray-200 text-gray-700 text-xs font-semibold px-3 py-2 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-60"
-        >
-          <Crosshair className={`w-4 h-4 ${locating ? 'animate-spin text-brand-500' : ''}`} />
-          {locating ? 'Suche...' : 'Standort'}
-        </button>
-      </div>
-
-      {/* Quick links */}
-      <div className="max-w-5xl mx-auto w-full px-4 mt-6 mb-10">
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-          Kategorien
-        </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-          {CATEGORIES.slice(1).map((cat) => {
-            const count = products.filter((p) => p.category === cat && p.available && p.stock > 0).length
-            const emoji: Record<string, string> = {
-              Lebensmittel: '🥦',
-              Elektronik: '💻',
-              Mode: '👕',
-              Backwaren: '🍞',
-              Sport: '🏃',
+      {/* Category chips */}
+      <div
+        className="absolute left-3 right-3 z-20 flex gap-1.5 overflow-hidden"
+        style={{ top: 108 }}
+      >
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setActiveCategory(cat)}
+            className="flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium shadow whitespace-nowrap transition-colors"
+            style={
+              activeCategory === cat
+                ? { background: '#E05C00', color: 'white' }
+                : { background: 'white', color: '#333' }
             }
-            return (
-              <button
-                key={cat}
-                onClick={() => navigate(`/results?category=${cat}`)}
-                className="bg-white border border-gray-100 rounded-2xl p-4 text-left shadow-sm hover:shadow-md hover:border-brand-200 transition-all group"
-              >
-                <span className="text-2xl block mb-1">{emoji[cat]}</span>
-                <span className="text-sm font-semibold text-gray-800 group-hover:text-brand-600 block">{cat}</span>
-                <span className="text-xs text-gray-400">{count} verfügbar</span>
-              </button>
-            )
-          })}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Bottom sheet */}
+      <div
+        className="absolute left-0 right-0 z-30 bg-white flex flex-col"
+        style={{
+          bottom: 54,
+          height: SHEET_H,
+          borderRadius: '18px 18px 0 0',
+          boxShadow: '0 -3px 20px rgba(0,0,0,0.12)',
+          transform: `translateY(${ty}px)`,
+          transition: animating ? 'transform 0.3s cubic-bezier(0.4,0,0.2,1)' : 'none',
+          willChange: 'transform',
+        }}
+      >
+        {/* Drag zone */}
+        <div
+          className="flex-shrink-0 px-3.5 pt-2 pb-2.5 select-none"
+          style={{ cursor: 'grab', touchAction: 'none' }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={() => snapTo(ty)}
+        >
+          <div className="w-9 h-1 bg-gray-200 rounded-full mx-auto mb-2.5" />
+          <div className="text-base font-bold text-gray-900">In der Nähe</div>
+          <div className="flex justify-between mt-0.5" style={{ minHeight: 18 }}>
+            <span className="text-xs text-gray-500">
+              {isExpanded ? `${availableProducts.length} Produkte verfügbar` : ''}
+            </span>
+            <span
+              className="text-xs font-semibold"
+              style={{ color: isExpanded ? '#E05C00' : 'transparent' }}
+            >
+              Entfernung ↕
+            </span>
+          </div>
         </div>
 
-        {/* Nearby stores */}
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mt-8 mb-3">
-          <MapPin className="inline w-3.5 h-3.5 mr-1" />
-          Läden in der Nähe
-        </h2>
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-          {[...new Map(products.map((p) => [p.store.id, p.store])).values()].map((store) => {
-            const storeProducts = products.filter((p) => p.store.id === store.id && p.available && p.stock > 0)
-            return (
+        {/* Results list */}
+        <div className="flex-1 overflow-y-auto px-3.5 pb-2">
+          {availableProducts.map((product) => (
+            <div
+              key={product.id}
+              className="flex items-center gap-2.5 py-2.5 border-b border-gray-50 last:border-b-0"
+            >
+              {/* Tapping the main area → product detail */}
               <button
-                key={store.id}
-                onClick={() => navigate(`/results?storeId=${store.id}`)}
-                className="flex-shrink-0 bg-white border border-gray-100 rounded-2xl px-4 py-3 text-left shadow-sm hover:shadow-md hover:border-brand-200 transition-all min-w-[160px]"
+                onClick={() => navigate(`/product/${product.id}`)}
+                className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
               >
-                <p className="text-sm font-semibold text-gray-800 truncate">{store.name}</p>
-                <p className="text-xs text-gray-400 truncate mt-0.5">{store.address}</p>
-                <p className="text-xs text-brand-600 font-medium mt-1">{storeProducts.length} Produkte</p>
+                <div className="w-10 h-10 rounded-xl border border-gray-100 bg-gray-50 flex items-center justify-center flex-shrink-0 text-xl">
+                  {CATEGORY_EMOJI[product.category] ?? '🏪'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <Link
+                    to={`/store/${product.store.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-sm font-bold text-gray-900 truncate hover:text-brand-600 transition-colors block"
+                  >
+                    {product.store.name}
+                  </Link>
+                  <div className="text-xs text-gray-400 mt-0.5 truncate">
+                    {formatDistance(
+                      getDistance(userLocation[0], userLocation[1], product.store.lat, product.store.lng)
+                    )}{' '}
+                    · {product.name}
+                  </div>
+                </div>
               </button>
-            )
-          })}
+              {/* Price + badge + reserve */}
+              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                {product.onSale && product.salePrice != null ? (
+                  <div className="flex flex-col items-end">
+                    <span className="text-xs font-bold" style={{ color: '#E05C00' }}>
+                      {product.salePrice.toFixed(2).replace('.', ',')} €
+                    </span>
+                    <span className="text-[10px] text-gray-400 line-through">
+                      {product.price.toFixed(2).replace('.', ',')} €
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-xs font-bold text-gray-900">
+                    {product.price.toFixed(2).replace('.', ',')} €
+                  </span>
+                )}
+                <div className="flex items-center gap-1">
+                  <div className={`w-1.5 h-1.5 rounded-full ${STOCK_DOT[product.stockLevel]}`} />
+                  <span className={`text-[10px] font-semibold ${STOCK_TEXT[product.stockLevel]}`}>
+                    {STOCK_LABEL[product.stockLevel]}
+                  </span>
+                </div>
+                <span className="text-[9px] text-gray-400">{formatStockAge(product.stockUpdatedAt)}</span>
+                {product.stockLevel !== 'none' && (
+                  <button
+                    onClick={() => navigate(`/reserve/${product.id}`)}
+                    className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white"
+                    style={{ background: '#E05C00' }}
+                  >
+                    Reservieren
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+          {availableProducts.length === 0 && (
+            <p className="text-center text-sm text-gray-400 py-8">Keine Produkte verfügbar</p>
+          )}
+          <div className="text-center text-xs text-gray-300 py-2">— Ende der Ergebnisse —</div>
         </div>
       </div>
     </div>

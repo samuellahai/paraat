@@ -1,7 +1,13 @@
 import { Link } from 'react-router-dom'
-import { MapPin, Clock, Tag, ShoppingBag } from 'lucide-react'
-import type { Product } from '../types'
-import { formatDistance } from '../data/mockData'
+import { MapPin, Clock, Tag, ChevronRight } from 'lucide-react'
+import type { Product, StockLevel } from '../types'
+import { formatDistance, formatStockAge } from '../data/mockData'
+
+const STOCK_BADGE: Record<StockLevel, { dot: string; label: string; text: string }> = {
+  high: { dot: 'bg-green-500',  label: 'Verfügbar', text: 'text-green-700' },
+  low:  { dot: 'bg-yellow-400', label: 'Wenige',    text: 'text-yellow-700' },
+  none: { dot: 'bg-red-400',    label: 'Nicht da',  text: 'text-red-600' },
+}
 
 interface ProductCardProps {
   product: Product
@@ -21,8 +27,8 @@ export default function ProductCard({ product, distance, highlight }: ProductCar
       }`}
     >
       <div className="flex gap-4 p-4">
-        {/* Image */}
-        <div className="relative flex-shrink-0">
+        {/* Clickable area → product detail */}
+        <Link to={`/product/${product.id}`} className="relative flex-shrink-0">
           <img
             src={product.imageUrl}
             alt={product.name}
@@ -34,50 +40,73 @@ export default function ProductCard({ product, distance, highlight }: ProductCar
               <span className="text-[10px] font-bold text-red-500 uppercase tracking-wide">Vergriffen</span>
             </div>
           )}
-        </div>
+        </Link>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <span className="inline-block text-[10px] font-semibold uppercase tracking-wider text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full mb-1">
-                {product.category}
-              </span>
-              <h3 className="font-semibold text-gray-900 text-sm leading-tight">{product.name}</h3>
+          <Link to={`/product/${product.id}`} className="block">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <span className="inline-block text-[10px] font-semibold uppercase tracking-wider text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full mb-1">
+                  {product.category}
+                </span>
+                <h3 className="font-semibold text-gray-900 text-sm leading-tight flex items-center gap-1">
+                  {product.name}
+                  <ChevronRight className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                </h3>
+              </div>
+              <div className="flex flex-col items-end">
+                {product.onSale && product.salePrice != null ? (
+                  <>
+                    <span className="text-lg font-bold whitespace-nowrap" style={{ color: '#E05C00' }}>
+                      {product.salePrice.toFixed(2).replace('.', ',')} €
+                    </span>
+                    <span className="text-xs text-gray-400 line-through whitespace-nowrap">
+                      {product.price.toFixed(2).replace('.', ',')} €
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-lg font-bold text-gray-900 whitespace-nowrap">
+                    {product.price.toFixed(2).replace('.', ',')} €
+                  </span>
+                )}
+              </div>
             </div>
-            <span className="text-lg font-bold text-gray-900 whitespace-nowrap">
-              {product.price.toFixed(2).replace('.', ',')} €
-            </span>
-          </div>
 
-          <p className="text-xs text-gray-500 mt-1 line-clamp-2">{product.description}</p>
+            <p className="text-xs text-gray-500 mt-1 line-clamp-2">{product.description}</p>
 
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
-            <span className="flex items-center gap-1 text-xs text-gray-500">
-              <ShoppingBag className="w-3 h-3" />
-              {product.store.name}
-            </span>
-            {distance !== undefined && (
-              <span className="flex items-center gap-1 text-xs text-gray-500">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
+              <Link
+                to={`/store/${product.store.id}`}
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-1 text-xs text-brand-600 hover:underline font-medium"
+              >
                 <MapPin className="w-3 h-3" />
-                {formatDistance(distance)}
+                {product.store.name}
+              </Link>
+              {distance !== undefined && (
+                <span className="flex items-center gap-1 text-xs text-gray-500">
+                  <MapPin className="w-3 h-3" />
+                  {formatDistance(distance)}
+                </span>
+              )}
+              <span className="flex items-center gap-1 text-xs text-gray-500">
+                <Clock className="w-3 h-3" />
+                {product.store.openingHours}
               </span>
-            )}
-            <span className="flex items-center gap-1 text-xs text-gray-500">
-              <Clock className="w-3 h-3" />
-              {product.store.openingHours}
-            </span>
-          </div>
+            </div>
+          </Link>
 
           <div className="flex items-center justify-between mt-3">
-            <div className="flex items-center gap-2">
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  inStock ? 'bg-green-500' : 'bg-red-400'
-                }`}
-              />
-              <span className={`text-xs font-medium ${inStock ? 'text-green-700' : 'text-red-500'}`}>
-                {inStock ? `${product.stock} verfügbar` : 'Nicht verfügbar'}
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-1.5">
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${STOCK_BADGE[product.stockLevel].dot}`} />
+                <span className={`text-xs font-semibold ${STOCK_BADGE[product.stockLevel].text}`}>
+                  {STOCK_BADGE[product.stockLevel].label}
+                </span>
+              </div>
+              <span className="text-[10px] text-gray-400 pl-3.5">
+                Stand: {formatStockAge(product.stockUpdatedAt)}
               </span>
             </div>
 

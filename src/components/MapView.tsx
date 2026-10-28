@@ -14,7 +14,7 @@ L.Icon.Default.mergeOptions({
 
 const brandIcon = L.divIcon({
   html: `<div style="
-    width:32px;height:32px;background:#f97316;border-radius:50% 50% 50% 0;
+    width:32px;height:32px;background:#E05C00;border-radius:50% 50% 50% 0;
     transform:rotate(-45deg);border:3px solid white;
     box-shadow:0 2px 8px rgba(0,0,0,0.25);
   "></div>`,
@@ -53,7 +53,7 @@ interface MapViewProps {
   onSelectProduct?: (id: string) => void
 }
 
-export default function MapView({ products, userLocation, selectedId, onSelectProduct }: MapViewProps) {
+export default function MapView({ products, userLocation, selectedId: _selectedId, onSelectProduct }: MapViewProps) {
   const defaultCenter: [number, number] = userLocation ?? [52.536, 13.415]
 
   // Group products by store
@@ -74,8 +74,8 @@ export default function MapView({ products, userLocation, selectedId, onSelectPr
       zoomControl={false}
     >
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
+        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
       />
       {userLocation && (
         <>

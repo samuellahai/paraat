@@ -1,3 +1,5 @@
+export type StockLevel = 'high' | 'low' | 'none'
+
 export interface Product {
   id: string
   name: string
@@ -9,6 +11,10 @@ export interface Product {
   store: Store
   stock: number
   available: boolean
+  stockLevel: StockLevel
+  stockUpdatedAt: string
+  onSale?: boolean
+  salePrice?: number
 }
 
 export interface Store {
@@ -20,6 +26,8 @@ export interface Store {
   lng: number
   phone?: string
   openingHours: string
+  description?: string
+  photos?: string[]
 }
 
 export interface Reservation {
@@ -42,4 +50,7 @@ export interface DashboardProduct {
   stock: number
   barcode: string
   imageUrl: string
+  stockUpdatedAt: string
+  onSale?: boolean
+  salePrice?: number
 }
