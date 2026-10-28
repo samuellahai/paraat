@@ -51,9 +51,10 @@ interface MapViewProps {
   userLocation: [number, number] | null
   selectedId?: string
   onSelectProduct?: (id: string) => void
+  onStoreClick?: (storeId: string) => void
 }
 
-export default function MapView({ products, userLocation, selectedId: _selectedId, onSelectProduct }: MapViewProps) {
+export default function MapView({ products, userLocation, selectedId: _selectedId, onSelectProduct, onStoreClick }: MapViewProps) {
   const defaultCenter: [number, number] = userLocation ?? [52.536, 13.415]
 
   // Group products by store
@@ -119,12 +120,22 @@ export default function MapView({ products, userLocation, selectedId: _selectedI
               {data.products.length > 3 && (
                 <p className="text-xs text-gray-400 mt-1">+{data.products.length - 3} weitere</p>
               )}
-              <Link
-                to={`/results?storeId=${storeId}`}
-                className="mt-2 block text-center text-xs font-medium text-brand-600 hover:text-brand-700"
-              >
-                Alle Produkte →
-              </Link>
+              {onStoreClick ? (
+                <button
+                  onClick={() => onStoreClick(storeId)}
+                  className="mt-2 block w-full text-center text-xs font-semibold py-1 rounded-lg"
+                  style={{ background: '#E05C00', color: 'white' }}
+                >
+                  Alle Produkte →
+                </button>
+              ) : (
+                <Link
+                  to={`/store/${storeId}`}
+                  className="mt-2 block text-center text-xs font-medium text-brand-600 hover:text-brand-700"
+                >
+                  Zum Händler →
+                </Link>
+              )}
             </div>
           </Popup>
         </Marker>
