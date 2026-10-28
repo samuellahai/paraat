@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Crosshair } from 'lucide-react'
+import { Crosshair, X } from 'lucide-react'
 import MapView from '../components/MapView'
 import { products, getDistance, formatDistance, formatStockAge } from '../data/mockData'
 import type { StockLevel } from '../types'
@@ -43,6 +43,8 @@ const CATEGORY_EMOJI: Record<string, string> = {
 export default function Home() {
   const navigate = useNavigate()
   const [activeCategory, setActiveCategory] = useState('Alle')
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [pendingCategory, setPendingCategory] = useState('Alle')
   const [userLocation, setUserLocation] = useState<[number, number]>(DEFAULT_LOC)
   const [locating, setLocating] = useState(false)
 
@@ -129,67 +131,111 @@ export default function Home() {
           >
             Paraat
           </span>
-          <div className="flex items-center gap-2">
-            {/* Locate me */}
-            <button
-              onClick={handleLocate}
-              disabled={locating}
-              className="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg bg-white/90"
-              aria-label="Standort ermitteln"
-            >
-              <Crosshair className={`w-4 h-4 ${locating ? 'animate-spin text-brand-500' : 'text-gray-600'}`} />
-            </button>
-            {/* Filter */}
-            <button
-              className="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0"
-              style={{ background: '#E05C00' }}
-              aria-label="Filter"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <path d="M3 6h18M7 12h10M11 18h2" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Search bar */}
-        <div className="relative">
-          <svg
-            className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-            width="12" height="12" viewBox="0 0 16 16" fill="none"
-          >
-            <circle cx="7" cy="7" r="5" stroke="#aaa" strokeWidth="1.5" />
-            <path d="M11 11l3 3" stroke="#aaa" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-          <input
-            readOnly
-            placeholder="Produkt suchen..."
-            className="w-full rounded-xl py-2 pl-8 pr-3 text-sm text-gray-500 bg-white shadow-md outline-none cursor-pointer"
-            onClick={() => navigate('/results')}
-          />
-        </div>
-      </div>
-
-      {/* Category chips */}
-      <div
-        className="absolute left-3 right-3 z-20 flex gap-1.5 overflow-hidden"
-        style={{ top: 108 }}
-      >
-        {CATEGORIES.map((cat) => (
+          {/* Locate me */}
           <button
-            key={cat}
-            onClick={() => setActiveCategory(cat)}
-            className="flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium shadow whitespace-nowrap transition-colors"
-            style={
-              activeCategory === cat
-                ? { background: '#E05C00', color: 'white' }
-                : { background: 'white', color: '#333' }
-            }
+            onClick={handleLocate}
+            disabled={locating}
+            className="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg bg-white/90"
+            aria-label="Standort ermitteln"
           >
-            {cat}
+            <Crosshair className={`w-4 h-4 ${locating ? 'animate-spin text-brand-500' : 'text-gray-600'}`} />
           </button>
-        ))}
+        </div>
+
+        {/* Search bar + Filter button */}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <svg
+              className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+              width="12" height="12" viewBox="0 0 16 16" fill="none"
+            >
+              <circle cx="7" cy="7" r="5" stroke="#aaa" strokeWidth="1.5" />
+              <path d="M11 11l3 3" stroke="#aaa" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <input
+              readOnly
+              placeholder="Was suchst du?"
+              className="w-full rounded-xl py-2 pl-8 pr-3 text-sm text-gray-500 bg-white shadow-md outline-none cursor-pointer"
+              onClick={() => navigate('/results')}
+            />
+          </div>
+          <button
+            onClick={() => { setPendingCategory(activeCategory); setFilterOpen(true) }}
+            className="flex items-center gap-1.5 px-3 rounded-xl shadow-md text-white text-xs font-bold flex-shrink-0"
+            style={{ background: activeCategory !== 'Alle' ? '#E05C00' : '#333' }}
+            aria-label="Filter"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <path d="M3 6h18M7 12h10M11 18h2" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
+            Filter{activeCategory !== 'Alle' ? ' ●' : ''}
+          </button>
+        </div>
       </div>
+
+      {/* Filter modal */}
+      {filterOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 z-50 bg-black/40"
+            onClick={() => setFilterOpen(false)}
+          />
+          {/* Sheet */}
+          <div
+            className="absolute left-0 right-0 bottom-[54px] z-50 bg-white rounded-t-2xl shadow-2xl"
+            style={{ maxHeight: '70vh', overflowY: 'auto' }}
+          >
+            {/* Handle + header */}
+            <div className="px-4 pt-3 pb-4 border-b border-gray-100">
+              <div className="w-9 h-1 bg-gray-200 rounded-full mx-auto mb-3" />
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-bold text-gray-900">Filter</h2>
+                <button
+                  onClick={() => setFilterOpen(false)}
+                  className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center"
+                >
+                  <X className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
+            </div>
+
+            <div className="px-4 py-5 space-y-5">
+              {/* Category */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Kategorie</p>
+                <div className="flex flex-wrap gap-2">
+                  {CATEGORIES.map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setPendingCategory(cat)}
+                      className="rounded-full px-4 py-1.5 text-sm font-medium border transition-colors"
+                      style={
+                        pendingCategory === cat
+                          ? { background: '#E05C00', color: 'white', borderColor: '#E05C00' }
+                          : { background: 'white', color: '#333', borderColor: '#e5e7eb' }
+                      }
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Apply button */}
+            <div className="px-4 pb-6">
+              <button
+                onClick={() => { setActiveCategory(pendingCategory); setFilterOpen(false) }}
+                className="w-full py-3.5 rounded-2xl text-white text-sm font-bold shadow-lg"
+                style={{ background: '#E05C00' }}
+              >
+                Anwenden
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Bottom sheet */}
       <div
