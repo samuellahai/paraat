@@ -71,7 +71,6 @@ const PRODUCTS_BY_LOCATION: Record<string, DashboardProduct[]> = {
   ],
 }
 
-const INITIAL_PRODUCTS = PRODUCTS_BY_LOCATION['loc1']!
 
 interface MockReservation {
   id: string
@@ -90,9 +89,9 @@ const INITIAL_RESERVATIONS: MockReservation[] = [
   { id: 'r4', code: 'PAR-V2N5L9', productName: 'Dinkelbrötchen 6er-Pack', customerName: 'Anna W.',  customerPhone: '+49 162 001122', createdAt: 'Gestern, 11:20', status: 'expired' },
 ]
 
-const EMPTY_FORM: Omit<DashboardProduct, 'id' | 'stockUpdatedAt'> = {
+const EMPTY_FORM = {
   name: '', description: '', price: 0, category: 'Backwaren',
-  stock: 0, barcode: '', imageUrl: '', onSale: false, salePrice: undefined, status: 'approved',
+  stock: 0, barcode: '', imageUrl: '', onSale: false, salePrice: undefined as number | undefined, status: 'approved' as ProductStatus,
 }
 
 type ModalMode = 'add' | 'edit' | null
@@ -275,7 +274,7 @@ export default function Dashboard() {
   // ── Product CRUD ──────────────────────────────────────────────────────
   const openAdd = () => { setForm(EMPTY_FORM); setFormErrors({}); setEditingId(null); setAddStep('choose'); setModal('add') }
   const openEdit = (p: DashboardProduct) => {
-    setForm({ name: p.name, description: p.description, price: p.price, category: p.category, stock: p.stock, barcode: p.barcode, imageUrl: p.imageUrl, onSale: p.onSale ?? false, salePrice: p.salePrice })
+    setForm({ name: p.name, description: p.description, price: p.price, category: p.category, stock: p.stock, barcode: p.barcode, imageUrl: p.imageUrl, onSale: p.onSale ?? false, salePrice: p.salePrice, status: p.status ?? 'approved' })
     setFormErrors({}); setEditingId(p.id); setModal('edit')
   }
   const closeModal = () => { setModal(null); stopBarcodeScanner(); setAddStep('choose') }
@@ -829,6 +828,7 @@ export default function Dashboard() {
 
             {/* Step: New product form (add) or edit form */}
             {(modal === 'edit' || (modal === 'add' && addStep === 'new')) && (
+            <>
             <div className="px-5 py-4 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Produktname *</label>
@@ -943,6 +943,7 @@ export default function Dashboard() {
                 {modal === 'add' ? 'Einreichen' : 'Speichern'}
               </button>
             </div>
+            </>
             )}
           </div>
         </div>

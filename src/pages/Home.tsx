@@ -465,7 +465,6 @@ export default function Home() {
         {/* Product list */}
         <div className="flex-1 overflow-y-auto px-3.5 pb-2">
           {uniqueProducts.map(({ catalogId, product, minPrice, storeCount }) => {
-            const inStock = product.available && product.stock > 0
             const dist = getDistance(userLocation[0], userLocation[1], product.store.lat, product.store.lng)
 
             return (
