@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import type { Product } from '../types'
 import { Link } from 'react-router-dom'
@@ -46,16 +46,44 @@ function Recenter({ center }: RecenterProps) {
   return null
 }
 
+// Persist map position to localStorage and report moves to parent
+function MapPersistence({ onMove }: { onMove?: (center: [number, number], zoom: number) => void }) {
+  useMapEvents({
+    moveend(e) {
+      const c = e.target.getCenter()
+      const z = e.target.getZoom()
+      try {
+        localStorage.setItem('paraat_map_center', JSON.stringify([c.lat, c.lng]))
+        localStorage.setItem('paraat_map_zoom', String(z))
+      } catch { /* noop */ }
+      onMove?.([c.lat, c.lng], z)
+    },
+  })
+  return null
+}
+
+function loadSavedPosition(): { center: [number, number]; zoom: number } | null {
+  try {
+    const c = localStorage.getItem('paraat_map_center')
+    const z = localStorage.getItem('paraat_map_zoom')
+    if (c && z) return { center: JSON.parse(c) as [number, number], zoom: Number(z) }
+  } catch { /* noop */ }
+  return null
+}
+
 interface MapViewProps {
   products: Product[]
   userLocation: [number, number] | null
   selectedId?: string
   onSelectProduct?: (id: string) => void
   onStoreClick?: (storeId: string) => void
+  onMapMove?: (center: [number, number], zoom: number) => void
 }
 
-export default function MapView({ products, userLocation, selectedId: _selectedId, onSelectProduct, onStoreClick }: MapViewProps) {
-  const defaultCenter: [number, number] = userLocation ?? [52.536, 13.415]
+export default function MapView({ products, userLocation, selectedId: _selectedId, onSelectProduct, onStoreClick, onMapMove }: MapViewProps) {
+  const saved = loadSavedPosition()
+  const defaultCenter: [number, number] = saved?.center ?? userLocation ?? [52.536, 13.415]
+  const defaultZoom = saved?.zoom ?? 14
 
   // Group products by store
   const storeMap = new Map<string, { lat: number; lng: number; products: Product[] }>()
@@ -70,7 +98,7 @@ export default function MapView({ products, userLocation, selectedId: _selectedI
   return (
     <MapContainer
       center={defaultCenter}
-      zoom={14}
+      zoom={defaultZoom}
       className="w-full h-full rounded-xl"
       zoomControl={false}
     >
@@ -78,6 +106,7 @@ export default function MapView({ products, userLocation, selectedId: _selectedI
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      <MapPersistence onMove={onMapMove} />
       {userLocation && (
         <>
           <Recenter center={userLocation} />
@@ -120,22 +149,23 @@ export default function MapView({ products, userLocation, selectedId: _selectedI
               {data.products.length > 3 && (
                 <p className="text-xs text-gray-400 mt-1">+{data.products.length - 3} weitere</p>
               )}
-              {onStoreClick ? (
-                <button
-                  onClick={() => onStoreClick(storeId)}
-                  className="mt-2 block w-full text-center text-xs font-semibold py-1 rounded-lg"
-                  style={{ background: '#E05C00', color: 'white' }}
-                >
-                  Alle Produkte →
-                </button>
-              ) : (
+              <div className="mt-2 flex gap-1.5">
+                {onStoreClick && (
+                  <button
+                    onClick={() => onStoreClick(storeId)}
+                    className="flex-1 text-center text-xs font-semibold py-1.5 rounded-lg"
+                    style={{ background: '#E05C00', color: 'white' }}
+                  >
+                    Alle Produkte
+                  </button>
+                )}
                 <Link
                   to={`/store/${storeId}`}
-                  className="mt-2 block text-center text-xs font-medium text-brand-600 hover:text-brand-700"
+                  className="flex-1 text-center text-xs font-medium py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
                 >
-                  Zum Händler →
+                  Zum Händler
                 </Link>
-              )}
+              </div>
             </div>
           </Popup>
         </Marker>

@@ -32,7 +32,7 @@ export default function Confirmation() {
   const codeRef = useRef(`PAR-${Math.random().toString(36).slice(2, 8).toUpperCase()}`)
   const reservationCode = codeRef.current
 
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000)
   const expiresStr = expiresAt.toLocaleString('de-DE', {
     weekday: 'long',
     day: '2-digit',

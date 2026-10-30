@@ -2,10 +2,11 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import {
   Plus, Edit2, Trash2, Package, Camera, X, Check,
   AlertCircle, Search, ChevronDown, Scan, Clock,
-  LayoutList, Boxes, ClipboardList, QrCode,
+  LayoutList, Boxes, ClipboardList, QrCode, MapPin, ChevronRight,
 } from 'lucide-react'
 import jsQR from 'jsqr'
-import type { DashboardProduct } from '../types'
+import type { DashboardProduct, ProductStatus } from '../types'
+import { products as catalogProducts } from '../data/mockData'
 
 const now = () => new Date().toISOString()
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString()
@@ -21,26 +22,56 @@ function formatStockAge(isoStr: string): string {
 
 const CATEGORIES = ['Lebensmittel', 'Elektronik', 'Mode', 'Backwaren', 'Sport', 'Haushalt', 'Fahrrad', 'Sonstiges']
 
-const INITIAL_PRODUCTS: DashboardProduct[] = [
-  {
-    id: 'd1', name: 'Roggenmischbrot 750g', description: 'Sauerteig, Steinofen',
-    price: 4.20, category: 'Backwaren', stock: 9, barcode: '2001234000010',
-    imageUrl: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=200&q=80',
-    stockUpdatedAt: hoursAgo(1),
-  },
-  {
-    id: 'd2', name: 'Buttercroissant 3er-Pack', description: 'Feine Butterblätterteilchen',
-    price: 2.90, category: 'Backwaren', stock: 3, barcode: '2001234000027',
-    imageUrl: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=200&q=80',
-    stockUpdatedAt: hoursAgo(0),
-  },
-  {
-    id: 'd3', name: 'Dinkelbrötchen 6er-Pack', description: 'Aus vollem Dinkelkorn',
-    price: 3.00, category: 'Backwaren', stock: 0, barcode: '2001234000034',
-    imageUrl: 'https://images.unsplash.com/photo-1563729784474-d77dbb933a9e?w=200&q=80',
-    stockUpdatedAt: hoursAgo(2),
-  },
+interface Location {
+  id: string
+  name: string
+  address: string
+  hours: string
+}
+
+const INITIAL_LOCATIONS: Location[] = [
+  { id: 'loc1', name: 'Backstube Lindemann', address: 'Limmerstraße 45', hours: 'Mo–Fr 6–18, Sa–So 6–14 Uhr' },
+  { id: 'loc2', name: 'Backstube Lindemann – Zentrum', address: 'Georgstraße 12', hours: 'Mo–Sa 7–19 Uhr' },
 ]
+
+const PRODUCTS_BY_LOCATION: Record<string, DashboardProduct[]> = {
+  loc1: [
+    {
+      id: 'd1', name: 'Roggenmischbrot 750g', description: 'Sauerteig, Steinofen',
+      price: 4.20, category: 'Backwaren', stock: 9, barcode: '2001234000010',
+      imageUrl: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=200&q=80',
+      stockUpdatedAt: hoursAgo(1), status: 'approved',
+    },
+    {
+      id: 'd2', name: 'Buttercroissant 3er-Pack', description: 'Feine Butterblätterteilchen',
+      price: 2.90, category: 'Backwaren', stock: 3, barcode: '2001234000027',
+      imageUrl: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=200&q=80',
+      stockUpdatedAt: hoursAgo(0), status: 'approved',
+    },
+    {
+      id: 'd3', name: 'Dinkelbrötchen 6er-Pack', description: 'Aus vollem Dinkelkorn',
+      price: 3.00, category: 'Backwaren', stock: 0, barcode: '2001234000034',
+      imageUrl: 'https://images.unsplash.com/photo-1563729784474-d77dbb933a9e?w=200&q=80',
+      stockUpdatedAt: hoursAgo(2), status: 'approved',
+    },
+  ],
+  loc2: [
+    {
+      id: 'd4', name: 'Laugenbrezel groß', description: 'Frisch gebacken',
+      price: 1.20, category: 'Backwaren', stock: 12, barcode: '2001234000041',
+      imageUrl: 'https://images.unsplash.com/photo-1586444248902-2f64eddc13df?w=200&q=80',
+      stockUpdatedAt: hoursAgo(0), status: 'approved',
+    },
+    {
+      id: 'd5', name: 'Bio-Hafermilch Oatly', description: 'Für den Laden-Kaffee',
+      price: 2.19, category: 'Lebensmittel', stock: 8, barcode: '5060289070015',
+      imageUrl: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=200&q=80',
+      stockUpdatedAt: hoursAgo(3), status: 'pending',
+    },
+  ],
+}
+
+const INITIAL_PRODUCTS = PRODUCTS_BY_LOCATION['loc1']!
 
 interface MockReservation {
   id: string
@@ -61,11 +92,12 @@ const INITIAL_RESERVATIONS: MockReservation[] = [
 
 const EMPTY_FORM: Omit<DashboardProduct, 'id' | 'stockUpdatedAt'> = {
   name: '', description: '', price: 0, category: 'Backwaren',
-  stock: 0, barcode: '', imageUrl: '', onSale: false, salePrice: undefined,
+  stock: 0, barcode: '', imageUrl: '', onSale: false, salePrice: undefined, status: 'approved',
 }
 
 type ModalMode = 'add' | 'edit' | null
 type Tab = 'products' | 'stock' | 'reservations'
+type AddStep = 'choose' | 'catalog' | 'new'
 
 const STATUS_COLORS: Record<MockReservation['status'], { bg: string; text: string; label: string }> = {
   active:   { bg: 'bg-green-50',  text: 'text-green-700',  label: 'Aktiv' },
@@ -75,11 +107,27 @@ const STATUS_COLORS: Record<MockReservation['status'], { bg: string; text: strin
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('products')
-  const [products, setProducts] = useState<DashboardProduct[]>(INITIAL_PRODUCTS)
+  const [allProductsByLoc, setAllProductsByLoc] = useState<Record<string, DashboardProduct[]>>(PRODUCTS_BY_LOCATION)
+  const [locations, setLocations] = useState<Location[]>(INITIAL_LOCATIONS)
+  const [activeLocId, setActiveLocId] = useState<string>('loc1')
+  const [locDropOpen, setLocDropOpen] = useState(false)
+  const [newLocModal, setNewLocModal] = useState(false)
+  const [newLocForm, setNewLocForm] = useState({ name: '', address: '', hours: '' })
+
+  const products = allProductsByLoc[activeLocId] ?? []
+  const setProducts = (updater: DashboardProduct[] | ((prev: DashboardProduct[]) => DashboardProduct[])) => {
+    setAllProductsByLoc((prev) => ({
+      ...prev,
+      [activeLocId]: typeof updater === 'function' ? updater(prev[activeLocId] ?? []) : updater,
+    }))
+  }
+
   const [reservations, setReservations] = useState<MockReservation[]>(INITIAL_RESERVATIONS)
 
   // Product form
   const [modal, setModal] = useState<ModalMode>(null)
+  const [addStep, setAddStep] = useState<AddStep>('choose')
+  const [catalogSearch, setCatalogSearch] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof typeof EMPTY_FORM, string>>>({})
@@ -225,12 +273,12 @@ export default function Dashboard() {
   }
 
   // ── Product CRUD ──────────────────────────────────────────────────────
-  const openAdd = () => { setForm(EMPTY_FORM); setFormErrors({}); setEditingId(null); setModal('add') }
+  const openAdd = () => { setForm(EMPTY_FORM); setFormErrors({}); setEditingId(null); setAddStep('choose'); setModal('add') }
   const openEdit = (p: DashboardProduct) => {
     setForm({ name: p.name, description: p.description, price: p.price, category: p.category, stock: p.stock, barcode: p.barcode, imageUrl: p.imageUrl, onSale: p.onSale ?? false, salePrice: p.salePrice })
     setFormErrors({}); setEditingId(p.id); setModal('edit')
   }
-  const closeModal = () => { setModal(null); stopBarcodeScanner() }
+  const closeModal = () => { setModal(null); stopBarcodeScanner(); setAddStep('choose') }
 
   const validate = () => {
     const e: typeof formErrors = {}
@@ -241,10 +289,30 @@ export default function Dashboard() {
     return Object.keys(e).length === 0
   }
 
+  const handleAssignFromCatalog = (catalogProduct: typeof catalogProducts[0]) => {
+    const newProd: DashboardProduct = {
+      id: `d${Date.now()}`,
+      name: catalogProduct.name,
+      description: catalogProduct.description,
+      price: catalogProduct.price,
+      category: catalogProduct.category,
+      stock: 0,
+      barcode: catalogProduct.barcode ?? '',
+      imageUrl: catalogProduct.imageUrl,
+      stockUpdatedAt: now(),
+      status: 'approved',
+    }
+    setProducts((prev) => [...prev, newProd])
+    setSavedToast(true)
+    setTimeout(() => setSavedToast(false), 2500)
+    closeModal()
+  }
+
   const handleSave = () => {
     if (!validate()) return
     if (modal === 'add') {
-      setProducts((prev) => [...prev, { ...form, id: `d${Date.now()}`, stockUpdatedAt: now() }])
+      const status: ProductStatus = addStep === 'new' ? 'pending' : 'approved'
+      setProducts((prev) => [...prev, { ...form, id: `d${Date.now()}`, stockUpdatedAt: now(), status }])
     } else if (modal === 'edit' && editingId) {
       setProducts((prev) => prev.map((p) => p.id === editingId ? { ...p, ...form, stockUpdatedAt: now() } : p))
     }
@@ -286,22 +354,113 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* New Location Modal */}
+      {newLocModal && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/40" onClick={() => setNewLocModal(false)} />
+          <div className="fixed left-4 right-4 top-1/2 -translate-y-1/2 z-50 bg-white rounded-2xl shadow-2xl p-5 max-w-sm mx-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold text-gray-900">Neuer Standort</h2>
+              <button onClick={() => setNewLocModal(false)} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center">
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Name des Standorts *</label>
+                <input type="text" value={newLocForm.name} onChange={(e) => setNewLocForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="z.B. Backstube Mitte" className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:border-[#E05C00] focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Adresse</label>
+                <input type="text" value={newLocForm.address} onChange={(e) => setNewLocForm((f) => ({ ...f, address: e.target.value }))}
+                  placeholder="Straße Hausnummer" className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:border-[#E05C00] focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Öffnungszeiten</label>
+                <input type="text" value={newLocForm.hours} onChange={(e) => setNewLocForm((f) => ({ ...f, hours: e.target.value }))}
+                  placeholder="Mo–Fr 8–18 Uhr" className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:border-[#E05C00] focus:outline-none" />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setNewLocModal(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600">Abbrechen</button>
+              <button
+                onClick={() => {
+                  if (!newLocForm.name.trim()) return
+                  const id = `loc${Date.now()}`
+                  setLocations((l) => [...l, { id, ...newLocForm }])
+                  setAllProductsByLoc((p) => ({ ...p, [id]: [] }))
+                  setActiveLocId(id)
+                  setNewLocForm({ name: '', address: '', hours: '' })
+                  setNewLocModal(false)
+                }}
+                className="flex-1 py-2.5 rounded-xl text-white text-sm font-bold" style={{ background: '#E05C00' }}
+              >
+                Hinzufügen
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Header */}
       <div className="bg-white border-b border-gray-100 px-4 pt-5 pb-0">
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-between mb-3">
-            <div>
+            {/* Location switcher */}
+            <div className="relative flex-1 min-w-0 mr-3">
               <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">Händler-Dashboard</p>
-              <h1 className="text-lg font-extrabold text-gray-900 leading-tight">Backstube Lindemann</h1>
-              <p className="text-xs text-gray-400">Limmerstraße 45 · Mo–Fr 6–18, Sa–So 6–14 Uhr</p>
+              <button
+                onClick={() => setLocDropOpen((v) => !v)}
+                className="flex items-center gap-1.5 mt-0.5 group"
+              >
+                <h1 className="text-lg font-extrabold text-gray-900 leading-tight truncate max-w-[200px]">
+                  {locations.find((l) => l.id === activeLocId)?.name ?? '—'}
+                </h1>
+                <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0 group-hover:text-gray-600" />
+              </button>
+              <p className="text-xs text-gray-400">
+                {locations.find((l) => l.id === activeLocId)?.address} · {locations.find((l) => l.id === activeLocId)?.hours}
+              </p>
+
+              {locDropOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setLocDropOpen(false)} />
+                  <div className="absolute left-0 top-full mt-1 z-50 bg-white rounded-2xl shadow-2xl border border-gray-100 w-72 overflow-hidden">
+                    {locations.map((loc) => (
+                      <button
+                        key={loc.id}
+                        onClick={() => { setActiveLocId(loc.id); setLocDropOpen(false) }}
+                        className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-gray-50 last:border-b-0 transition-colors ${loc.id === activeLocId ? 'bg-orange-50' : 'hover:bg-gray-50'}`}
+                      >
+                        <MapPin className={`w-4 h-4 flex-shrink-0 ${loc.id === activeLocId ? 'text-[#E05C00]' : 'text-gray-400'}`} />
+                        <div className="min-w-0">
+                          <p className={`text-sm font-semibold truncate ${loc.id === activeLocId ? 'text-[#E05C00]' : 'text-gray-800'}`}>{loc.name}</p>
+                          <p className="text-xs text-gray-400 truncate">{loc.address}</p>
+                        </div>
+                        {loc.id === activeLocId && <Check className="w-4 h-4 text-[#E05C00] ml-auto flex-shrink-0" />}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => { setLocDropOpen(false); setNewLocModal(true) }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-[#E05C00] font-semibold text-sm hover:bg-orange-50 border-t border-gray-100"
+                    >
+                      <Plus className="w-4 h-4" /> Neuen Standort hinzufügen
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
+
+            {/* + button: new Standort */}
             <button
-              onClick={openAdd}
-              className="flex items-center gap-1.5 text-white font-semibold px-3 py-2 rounded-xl text-sm transition-colors shadow"
+              onClick={() => setNewLocModal(true)}
+              className="flex items-center gap-1.5 text-white font-semibold px-3 py-2 rounded-xl text-sm transition-colors shadow flex-shrink-0"
               style={{ background: '#E05C00' }}
+              title="Neuen Standort hinzufügen"
             >
               <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">Produkt</span>
+              <span className="hidden sm:inline">Standort</span>
             </button>
           </div>
 
@@ -335,10 +494,20 @@ export default function Dashboard() {
         {/* ── TAB: Produkte ── */}
         {activeTab === 'products' && (
           <div className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input type="text" value={searchQ} onChange={(e) => setSearchQ(e.target.value)}
-                placeholder="Produkt suchen..." className="w-full pl-9 pr-4 py-2.5 text-sm rounded-xl border border-gray-200 focus:border-brand-400 focus:outline-none bg-white" />
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input type="text" value={searchQ} onChange={(e) => setSearchQ(e.target.value)}
+                  placeholder="Produkt suchen..." className="w-full pl-9 pr-4 py-2.5 text-sm rounded-xl border border-gray-200 focus:border-[#E05C00] focus:outline-none bg-white" />
+              </div>
+              <button
+                onClick={openAdd}
+                className="flex items-center gap-1.5 text-white font-semibold px-3 py-2.5 rounded-xl text-sm flex-shrink-0"
+                style={{ background: '#E05C00' }}
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">Produkt</span>
+              </button>
             </div>
             {outOfStock > 0 && (
               <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex items-center gap-3">
@@ -371,6 +540,9 @@ export default function Dashboard() {
                       <p className="text-sm font-bold text-gray-900 truncate">{p.name}</p>
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <span className="text-[10px] bg-gray-100 text-gray-500 font-medium px-1.5 py-0.5 rounded-full">{p.category}</span>
+                        {p.status === 'pending' && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">⏳ Wartet auf Freigabe</span>
+                        )}
                         {p.onSale && p.salePrice != null ? (
                           <>
                             <span className="text-xs font-bold" style={{ color: '#E05C00' }}>{p.salePrice.toFixed(2).replace('.', ',')} €</span>
@@ -578,9 +750,85 @@ export default function Dashboard() {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-4">
           <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
-              <h2 className="font-bold text-gray-900">{modal === 'add' ? 'Produkt hinzufügen' : 'Produkt bearbeiten'}</h2>
+              <h2 className="font-bold text-gray-900">
+                {modal === 'edit' ? 'Produkt bearbeiten' : addStep === 'choose' ? 'Produkt hinzufügen' : addStep === 'catalog' ? 'Aus Katalog wählen' : 'Neues Produkt'}
+              </h2>
               <button onClick={closeModal} className="p-2 rounded-xl hover:bg-gray-100 text-gray-500"><X className="w-4 h-4" /></button>
             </div>
+
+            {/* Step: Choose source (add mode only) */}
+            {modal === 'add' && addStep === 'choose' && (
+              <div className="px-5 py-6 space-y-3">
+                <p className="text-sm text-gray-500 mb-4">Woher kommt das Produkt?</p>
+                <button
+                  onClick={() => { setAddStep('catalog'); setCatalogSearch('') }}
+                  className="w-full flex items-center gap-4 bg-gray-50 hover:bg-orange-50 rounded-2xl p-4 border border-gray-200 hover:border-[#E05C00] transition-colors text-left"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm flex-shrink-0">
+                    <Search className="w-5 h-5 text-[#E05C00]" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900 text-sm">Aus dem Katalog zuweisen</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Bestehendes Paraat-Produkt zu deinem Standort hinzufügen</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-gray-400 ml-auto flex-shrink-0" />
+                </button>
+                <button
+                  onClick={() => setAddStep('new')}
+                  className="w-full flex items-center gap-4 bg-gray-50 hover:bg-orange-50 rounded-2xl p-4 border border-gray-200 hover:border-[#E05C00] transition-colors text-left"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm flex-shrink-0">
+                    <Plus className="w-5 h-5 text-[#E05C00]" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900 text-sm">Neues Produkt erstellen</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Wird zur Freigabe eingereicht — erst nach Admin-Genehmigung sichtbar</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-gray-400 ml-auto flex-shrink-0" />
+                </button>
+              </div>
+            )}
+
+            {/* Step: Catalog search */}
+            {modal === 'add' && addStep === 'catalog' && (
+              <div className="px-5 py-4">
+                <div className="relative mb-4">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={catalogSearch}
+                    onChange={(e) => setCatalogSearch(e.target.value)}
+                    placeholder="Produktname oder Kategorie..."
+                    autoFocus
+                    className="w-full pl-9 pr-4 py-2.5 text-sm rounded-xl border border-gray-200 focus:border-[#E05C00] focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {catalogProducts
+                    .filter((p, i, arr) => arr.findIndex((x) => x.catalogId === p.catalogId) === i)
+                    .filter((p) => !catalogSearch || p.name.toLowerCase().includes(catalogSearch.toLowerCase()) || p.category.toLowerCase().includes(catalogSearch.toLowerCase()))
+                    .map((cp) => (
+                      <button
+                        key={cp.catalogId}
+                        onClick={() => handleAssignFromCatalog(cp)}
+                        className="w-full flex items-center gap-3 bg-gray-50 hover:bg-orange-50 rounded-xl p-3 border border-gray-100 hover:border-[#E05C00] transition-colors text-left"
+                      >
+                        <img src={cp.imageUrl} alt={cp.name} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate">{cp.name}</p>
+                          <p className="text-xs text-gray-500">{cp.category}</p>
+                        </div>
+                        <span className="text-sm font-bold text-gray-700 flex-shrink-0">{cp.price.toFixed(2).replace('.', ',')} €</span>
+                      </button>
+                    ))
+                  }
+                </div>
+                <button onClick={() => setAddStep('choose')} className="mt-4 w-full py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600">← Zurück</button>
+              </div>
+            )}
+
+            {/* Step: New product form (add) or edit form */}
+            {(modal === 'edit' || (modal === 'add' && addStep === 'new')) && (
             <div className="px-5 py-4 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Produktname *</label>
@@ -680,13 +928,22 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
+            {modal === 'add' && addStep === 'new' && (
+              <div className="px-5 pb-3">
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800">Neues Produkt wird zur Admin-Freigabe eingereicht und ist erst danach für Kunden sichtbar.</p>
+                </div>
+              </div>
+            )}
             <div className="px-5 py-4 border-t border-gray-100 sticky bottom-0 bg-white flex gap-3">
               <button onClick={closeModal} className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Abbrechen</button>
               <button onClick={handleSave} className="flex-1 py-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2">
                 <Check className="w-4 h-4" />
-                {modal === 'add' ? 'Hinzufügen' : 'Speichern'}
+                {modal === 'add' ? 'Einreichen' : 'Speichern'}
               </button>
             </div>
+            )}
           </div>
         </div>
       )}

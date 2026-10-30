@@ -1,13 +1,16 @@
 export type StockLevel = 'high' | 'low' | 'none'
+export type ProductStatus = 'approved' | 'pending'
 
 export interface Product {
   id: string
+  catalogId: string       // groups same product across multiple stores
   name: string
   description: string
   price: number
   category: string
   imageUrl: string
   barcode?: string
+  status: ProductStatus
   store: Store
   stock: number
   available: boolean
@@ -35,7 +38,6 @@ export interface Reservation {
   product: Product
   reservedAt: string
   expiresAt: string
-  fee: number
   customerName: string
   customerEmail: string
   status: 'active' | 'redeemed' | 'expired'
@@ -53,4 +55,14 @@ export interface DashboardProduct {
   stockUpdatedAt: string
   onSale?: boolean
   salePrice?: number
+  status: ProductStatus
+}
+
+// Saved search area (user-defined geographic zone)
+export interface SearchArea {
+  id: string
+  label: string
+  lat: number
+  lng: number
+  radiusKm: number
 }

@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Tag, MapPin, Clock, Phone, User } from 'lucide-react'
+import { ArrowLeft, MapPin, Clock, User, Phone } from 'lucide-react'
 import { products } from '../data/mockData'
 
 export default function Reserve() {
-  const { productId } = useParams<{ productId: string }>()
+  const { productId, storeId } = useParams<{ productId: string; storeId: string }>()
   const navigate = useNavigate()
-  const product = products.find((p) => p.id === productId)
+
+  // Find the specific product+store listing
+  const product = products.find((p) => p.id === productId && p.store.id === storeId)
+    ?? products.find((p) => p.id === productId)
 
   const [form, setForm] = useState({ name: '', phone: '' })
   const [errors, setErrors] = useState<Partial<typeof form>>({})
@@ -18,17 +21,13 @@ export default function Reserve() {
         <div className="text-center">
           <p className="text-5xl mb-4">😕</p>
           <p className="font-semibold text-gray-700 mb-2">Produkt nicht gefunden</p>
-          <Link to="/results" className="text-brand-600 hover:underline text-sm">
-            Zurück zur Suche
-          </Link>
+          <Link to="/" className="text-brand-600 hover:underline text-sm">Zur Startseite</Link>
         </div>
       </div>
     )
   }
 
-  const displayPrice = product.onSale && product.salePrice != null
-    ? product.salePrice
-    : product.price
+  const displayPrice = product.onSale && product.salePrice != null ? product.salePrice : product.price
 
   const validate = (): boolean => {
     const e: Partial<typeof form> = {}
@@ -43,7 +42,7 @@ export default function Reserve() {
     setSubmitting(true)
     setTimeout(() => {
       navigate(`/confirmation/${product.id}`, {
-        state: { customerName: form.name, customerPhone: form.phone },
+        state: { customerName: form.name, customerPhone: form.phone, storeId: product.store.id },
       })
     }, 1200)
   }
@@ -51,7 +50,6 @@ export default function Reserve() {
   return (
     <div className="min-h-screen bg-gray-50 pb-10">
       <div className="max-w-lg mx-auto px-4 py-6">
-        {/* Back */}
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-5 transition-colors"
@@ -62,7 +60,7 @@ export default function Reserve() {
 
         <h1 className="text-lg font-bold text-gray-900 mb-4">Reservieren</h1>
 
-        {/* Product summary */}
+        {/* Product + store summary */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
           <div className="flex gap-3 items-start">
             <img
@@ -82,24 +80,19 @@ export default function Reserve() {
               </div>
             </div>
             <div className="text-right flex-shrink-0">
-              <p className="font-bold text-gray-900">
-                {displayPrice.toFixed(2).replace('.', ',')} €
-              </p>
+              <p className="font-bold text-gray-900">{displayPrice.toFixed(2).replace('.', ',')} €</p>
               {product.onSale && product.salePrice != null && (
-                <p className="text-xs text-gray-400 line-through">
-                  {product.price.toFixed(2).replace('.', ',')} €
-                </p>
+                <p className="text-xs text-gray-400 line-through">{product.price.toFixed(2).replace('.', ',')} €</p>
               )}
             </div>
           </div>
         </div>
 
-        {/* Info box */}
-        <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4 mb-5 text-sm text-orange-800">
-          <p className="font-semibold mb-0.5">Kostenlos reservieren</p>
+        {/* Info */}
+        <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4 mb-5">
+          <p className="text-sm font-semibold text-orange-800 mb-0.5">Kostenlos reservieren</p>
           <p className="text-xs text-orange-700">
-            Reservierung gilt 24 Stunden. Bezahlung erfolgt direkt im Laden.
-            Bringe deinen QR-Code mit.
+            Reservierung gilt 72 Stunden. Bezahlung direkt im Laden. Bringe deinen QR-Code mit.
           </p>
         </div>
 
@@ -140,7 +133,6 @@ export default function Reserve() {
           </div>
         </div>
 
-        {/* CTA */}
         <div className="mt-5">
           {submitting ? (
             <div className="w-full bg-brand-500 text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2">
@@ -150,9 +142,8 @@ export default function Reserve() {
           ) : (
             <button
               onClick={handleReserve}
-              className="w-full bg-brand-500 hover:bg-brand-600 text-white font-bold py-3.5 rounded-2xl text-sm transition-colors flex items-center justify-center gap-2 shadow-lg shadow-brand-200"
+              className="w-full bg-brand-500 hover:bg-brand-600 text-white font-bold py-3.5 rounded-2xl text-sm transition-colors shadow-lg shadow-brand-200"
             >
-              <Tag className="w-4 h-4" />
               Jetzt reservieren
             </button>
           )}

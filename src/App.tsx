@@ -22,7 +22,7 @@ function AppLayout() {
         <Route path="/" element={<Home />} />
         <Route path="/results" element={<Results />} />
         <Route path="/product/:productId" element={<ProductDetail />} />
-        <Route path="/reserve/:productId" element={<Reserve />} />
+        <Route path="/reserve/:productId/:storeId" element={<Reserve />} />
         <Route path="/confirmation/:productId" element={<Confirmation />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/account" element={<Account />} />

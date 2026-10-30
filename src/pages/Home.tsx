@@ -1,9 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { Crosshair, X, SlidersHorizontal } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Crosshair, X, SlidersHorizontal, MapPin, ChevronDown, BookmarkPlus, Bookmark, Check } from 'lucide-react'
 import MapView from '../components/MapView'
-import { products, getDistance, formatDistance, formatStockAge } from '../data/mockData'
-import type { StockLevel } from '../types'
+import { products, getDistance, formatDistance, formatStockAge, getUniqueProducts } from '../data/mockData'
+import type { StockLevel, SearchArea } from '../types'
 
 const STOCK_DOT: Record<StockLevel, string> = {
   high: 'bg-green-500',
@@ -35,6 +35,24 @@ const SNAP_FULL = 0
 
 const DEFAULT_LOC: [number, number] = [52.3759, 9.7320]
 
+// Unique stores for Händler filter
+const STORES = Array.from(
+  new Map(products.map((p) => [p.store.id, p.store])).values()
+)
+
+function useSearchAreas() {
+  const [areas, setAreas] = useState<SearchArea[]>(() => {
+    try { return JSON.parse(localStorage.getItem('paraat_search_areas') ?? '[]') } catch { return [] }
+  })
+  const save = useCallback((a: SearchArea[]) => {
+    setAreas(a)
+    try { localStorage.setItem('paraat_search_areas', JSON.stringify(a)) } catch { /* noop */ }
+  }, [])
+  const add = useCallback((area: SearchArea) => save([...areas, area]), [areas, save])
+  const remove = useCallback((id: string) => save(areas.filter((a) => a.id !== id)), [areas, save])
+  return { areas, add, remove }
+}
+
 export default function Home() {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
@@ -42,9 +60,16 @@ export default function Home() {
   const [storeFilter, setStoreFilter] = useState<string | null>(null)
   const [filterOpen, setFilterOpen] = useState(false)
   const [pendingCategory, setPendingCategory] = useState('Alle')
+  const [pendingStore, setPendingStore] = useState<string | null>(null)
   const [userLocation, setUserLocation] = useState<[number, number]>(DEFAULT_LOC)
   const [locating, setLocating] = useState(false)
+  const [mapCenter, setMapCenter] = useState<[number, number] | null>(null)
+  const [mapZoom, setMapZoom] = useState<number | null>(null)
+  const [areaDropOpen, setAreaDropOpen] = useState(false)
+  const [areasListOpen, setAreasListOpen] = useState(false)
+  const [savedAreaBadge, setSavedAreaBadge] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const { areas, add: addArea, remove: removeArea } = useSearchAreas()
 
   // Bottom sheet drag state
   const [ty, setTy] = useState(SNAP_PEEK)
@@ -79,6 +104,7 @@ export default function Home() {
 
   const handleLocate = useCallback(() => {
     setLocating(true)
+    setAreaDropOpen(false)
     navigator.geolocation.getCurrentPosition(
       (pos) => { setUserLocation([pos.coords.latitude, pos.coords.longitude]); setLocating(false) },
       () => setLocating(false),
@@ -96,13 +122,22 @@ export default function Home() {
     }
   }, [])
 
-  // When user focuses the search input, expand the sheet
+  const handleSaveArea = () => {
+    const center = mapCenter ?? userLocation
+    const zoom = mapZoom ?? 14
+    const radiusKm = zoom >= 16 ? 0.5 : zoom >= 14 ? 1 : zoom >= 12 ? 3 : 8
+    const label = `Bereich ${areas.length + 1}`
+    addArea({ id: Date.now().toString(), label, lat: center[0], lng: center[1], radiusKm })
+    setAreaDropOpen(false)
+    setSavedAreaBadge(true)
+    setTimeout(() => setSavedAreaBadge(false), 2000)
+  }
+
   const handleSearchFocus = () => {
     setAnimating(true)
     setTy(SNAP_FULL)
   }
 
-  // When a map pin is clicked, filter to that store and expand sheet
   const handleStoreClick = (storeId: string) => {
     setStoreFilter(storeId)
     setQuery('')
@@ -116,20 +151,12 @@ export default function Home() {
 
   const hasActiveFilter = activeCategory !== 'Alle' || storeFilter !== null
 
-  const filteredProducts = products.filter((p) => {
-    if (activeCategory !== 'Alle' && p.category !== activeCategory) return false
-    if (storeFilter && p.store.id !== storeFilter) return false
-    if (query) {
-      const q = query.toLowerCase()
-      return (
-        p.name.toLowerCase().includes(q) ||
-        p.store.name.toLowerCase().includes(q) ||
-        p.description.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q)
-      )
-    }
-    return true
-  })
+  const uniqueProducts = getUniqueProducts(
+    userLocation[0], userLocation[1],
+    storeFilter,
+    activeCategory !== 'Alle' ? activeCategory : undefined,
+    query || undefined,
+  )
 
   const visibleHeight = SHEET_H - ty
 
@@ -141,10 +168,11 @@ export default function Home() {
           products={products}
           userLocation={userLocation}
           onStoreClick={handleStoreClick}
+          onMapMove={(center, zoom) => { setMapCenter(center); setMapZoom(zoom) }}
         />
       </div>
 
-      {/* Top overlay: logo + locate only */}
+      {/* Top overlay: logo + split locate button */}
       <div
         className="absolute top-0 left-0 right-0 z-20 px-4 pt-4"
         style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, transparent 100%)' }}
@@ -156,22 +184,105 @@ export default function Home() {
           >
             Paraat
           </span>
-          <button
-            onClick={handleLocate}
-            disabled={locating}
-            className="w-9 h-9 rounded-xl flex items-center justify-center shadow-lg bg-white/90"
-            aria-label="Standort ermitteln"
-          >
-            <Crosshair className={`w-4 h-4 ${locating ? 'animate-spin text-brand-500' : 'text-gray-600'}`} />
-          </button>
+
+          {/* Split button: GPS / dropdown */}
+          <div className="relative flex items-center">
+            <button
+              onClick={handleLocate}
+              disabled={locating}
+              className="h-9 px-3 rounded-l-xl flex items-center gap-1.5 shadow-lg bg-white/90"
+              aria-label="Standort ermitteln"
+            >
+              <Crosshair className={`w-4 h-4 ${locating ? 'animate-spin text-brand-500' : 'text-gray-600'}`} />
+              {savedAreaBadge && (
+                <span className="flex items-center gap-0.5 text-[10px] font-bold text-green-600">
+                  <Check className="w-3 h-3" /> Gespeichert
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setAreaDropOpen((v) => !v)}
+              className="h-9 w-7 rounded-r-xl flex items-center justify-center shadow-lg bg-white/90 border-l border-gray-200 relative"
+              aria-label="Bereich-Optionen"
+            >
+              <ChevronDown className="w-3 h-3 text-gray-500" />
+              {areas.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#E05C00] text-white text-[9px] font-bold flex items-center justify-center">
+                  {areas.length}
+                </span>
+              )}
+            </button>
+
+            {areaDropOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setAreaDropOpen(false)} />
+                <div className="absolute right-0 top-11 z-50 bg-white rounded-2xl shadow-2xl border border-gray-100 w-52 overflow-hidden">
+                  <button
+                    onClick={handleSaveArea}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-100"
+                  >
+                    <BookmarkPlus className="w-4 h-4 text-[#E05C00]" />
+                    Bereich speichern
+                  </button>
+                  <button
+                    onClick={() => { setAreaDropOpen(false); setAreasListOpen(true) }}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <Bookmark className="w-4 h-4 text-gray-500" />
+                    Gespeicherte Bereiche
+                    {areas.length > 0 && (
+                      <span className="ml-auto text-[10px] font-bold bg-gray-100 text-gray-500 rounded-full px-1.5 py-0.5">{areas.length}</span>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Saved areas list modal */}
+      {areasListOpen && (
+        <>
+          <div className="absolute inset-0 z-50 bg-black/40" onClick={() => setAreasListOpen(false)} />
+          <div className="absolute left-0 right-0 bottom-[54px] z-50 bg-white rounded-t-2xl shadow-2xl" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+            <div className="px-4 pt-3 pb-4 border-b border-gray-100">
+              <div className="w-9 h-1 bg-gray-200 rounded-full mx-auto mb-3" />
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-bold text-gray-900">Gespeicherte Bereiche</h2>
+                <button onClick={() => setAreasListOpen(false)} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center">
+                  <X className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
+            </div>
+            <div className="px-4 py-4">
+              {areas.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-6">Noch keine Bereiche gespeichert.</p>
+              ) : (
+                <div className="space-y-2">
+                  {areas.map((a) => (
+                    <div key={a.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">{a.label}</p>
+                        <p className="text-xs text-gray-400">{a.lat.toFixed(4)}, {a.lng.toFixed(4)} · r={a.radiusKm}km</p>
+                      </div>
+                      <button onClick={() => removeArea(a.id)} className="w-7 h-7 rounded-full bg-white flex items-center justify-center shadow-sm">
+                        <X className="w-3.5 h-3.5 text-gray-400" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Filter modal */}
       {filterOpen && (
         <>
           <div className="absolute inset-0 z-50 bg-black/40" onClick={() => setFilterOpen(false)} />
-          <div className="absolute left-0 right-0 bottom-[54px] z-50 bg-white rounded-t-2xl shadow-2xl" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+          <div className="absolute left-0 right-0 bottom-[54px] z-50 bg-white rounded-t-2xl shadow-2xl" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
             <div className="px-4 pt-3 pb-4 border-b border-gray-100">
               <div className="w-9 h-1 bg-gray-200 rounded-full mx-auto mb-3" />
               <div className="flex items-center justify-between">
@@ -182,6 +293,40 @@ export default function Home() {
               </div>
             </div>
             <div className="px-4 py-5 space-y-5">
+              {/* Händler section */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Händler</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setPendingStore(null)}
+                    className="rounded-full px-4 py-1.5 text-sm font-medium border transition-colors"
+                    style={
+                      pendingStore === null
+                        ? { background: '#E05C00', color: 'white', borderColor: '#E05C00' }
+                        : { background: 'white', color: '#333', borderColor: '#e5e7eb' }
+                    }
+                  >
+                    Alle
+                  </button>
+                  {STORES.map((store) => (
+                    <button
+                      key={store.id}
+                      onClick={() => setPendingStore(store.id)}
+                      className="rounded-full px-4 py-1.5 text-sm font-medium border transition-colors flex items-center gap-1"
+                      style={
+                        pendingStore === store.id
+                          ? { background: '#E05C00', color: 'white', borderColor: '#E05C00' }
+                          : { background: 'white', color: '#333', borderColor: '#e5e7eb' }
+                      }
+                    >
+                      <MapPin className="w-3 h-3" />
+                      {store.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Kategorie section */}
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Kategorie</p>
                 <div className="flex flex-wrap gap-2">
@@ -204,7 +349,11 @@ export default function Home() {
             </div>
             <div className="px-4 pb-6">
               <button
-                onClick={() => { setActiveCategory(pendingCategory); setFilterOpen(false) }}
+                onClick={() => {
+                  setActiveCategory(pendingCategory)
+                  setStoreFilter(pendingStore)
+                  setFilterOpen(false)
+                }}
                 className="w-full py-3.5 rounded-2xl text-white text-sm font-bold shadow-lg"
                 style={{ background: '#E05C00' }}
               >
@@ -265,7 +414,7 @@ export default function Home() {
             )}
           </div>
           <button
-            onClick={() => { setPendingCategory(activeCategory); setFilterOpen(true) }}
+            onClick={() => { setPendingCategory(activeCategory); setPendingStore(storeFilter); setFilterOpen(true) }}
             className="flex items-center gap-1.5 px-3 rounded-xl text-xs font-bold flex-shrink-0"
             style={hasActiveFilter
               ? { background: '#E05C00', color: 'white' }
@@ -286,6 +435,7 @@ export default function Home() {
                 className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold flex-shrink-0"
                 style={{ background: '#fff3ec', color: '#E05C00', border: '1px solid #fbd0b5' }}
               >
+                <MapPin className="w-3 h-3" />
                 {activeStoreName}
                 <X className="w-3 h-3" />
               </button>
@@ -303,25 +453,24 @@ export default function Home() {
           </div>
         )}
 
-        {/* Result count — only when expanded */}
+        {/* Result count */}
         {visibleHeight >= 200 && (
           <div className="flex-shrink-0 px-3.5 pb-1 flex items-center justify-between">
             <span className="text-xs text-gray-400">
-              {filteredProducts.length} {filteredProducts.length === 1 ? 'Produkt' : 'Produkte'} gefunden
+              {uniqueProducts.length} {uniqueProducts.length === 1 ? 'Produkt' : 'Produkte'} gefunden
             </span>
           </div>
         )}
 
         {/* Product list */}
         <div className="flex-1 overflow-y-auto px-3.5 pb-2">
-          {filteredProducts.map((product) => {
+          {uniqueProducts.map(({ catalogId, product, minPrice, storeCount }) => {
             const inStock = product.available && product.stock > 0
             const dist = getDistance(userLocation[0], userLocation[1], product.store.lat, product.store.lng)
-            const displayPrice = product.onSale && product.salePrice != null ? product.salePrice : product.price
 
             return (
               <div
-                key={product.id}
+                key={catalogId}
                 className="flex items-center gap-3 py-3 border-b border-gray-50 last:border-b-0"
               >
                 <button
@@ -333,35 +482,50 @@ export default function Home() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-gray-900 truncate leading-tight">{product.name}</p>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Link
-                        to={`/store/${product.store.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-xs text-brand-600 hover:underline font-medium truncate max-w-[120px]"
-                      >
-                        {product.store.name}
-                      </Link>
-                      <span className="text-xs text-gray-300">·</span>
-                      <span className="text-xs text-gray-400 flex-shrink-0">{formatDistance(dist)}</span>
+                    <div className="flex items-center gap-1 mt-0.5 text-xs text-gray-500">
+                      <span className="truncate max-w-[120px]">{product.store.name}</span>
+                      <span className="text-gray-300">·</span>
+                      <span className="flex-shrink-0">{formatDistance(dist)}</span>
+                      {storeCount > 1 && (
+                        <>
+                          <span className="text-gray-300">·</span>
+                          <span className="flex-shrink-0 text-[#E05C00] font-medium">{storeCount} Händler</span>
+                        </>
+                      )}
                     </div>
                     <span className="text-[10px] text-gray-400">{formatStockAge(product.stockUpdatedAt)}</span>
                   </div>
                 </button>
 
                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                  {product.onSale && product.salePrice != null ? (
-                    <div className="flex flex-col items-end">
-                      <span className="text-sm font-bold" style={{ color: '#E05C00' }}>
-                        {displayPrice.toFixed(2).replace('.', ',')} €
-                      </span>
-                      <span className="text-[10px] text-gray-400 line-through">
+                  {storeFilter ? (
+                    /* When store filter active, show exact price */
+                    product.onSale && product.salePrice != null ? (
+                      <div className="flex flex-col items-end">
+                        <span className="text-sm font-bold" style={{ color: '#E05C00' }}>
+                          {product.salePrice.toFixed(2).replace('.', ',')} €
+                        </span>
+                        <span className="text-[10px] text-gray-400 line-through">
+                          {product.price.toFixed(2).replace('.', ',')} €
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-sm font-bold text-gray-900">
                         {product.price.toFixed(2).replace('.', ',')} €
                       </span>
-                    </div>
+                    )
                   ) : (
-                    <span className="text-sm font-bold text-gray-900">
-                      {displayPrice.toFixed(2).replace('.', ',')} €
-                    </span>
+                    /* Without store filter, show "ab X€" */
+                    minPrice !== null ? (
+                      <div className="flex flex-col items-end">
+                        <span className="text-[10px] text-gray-400">ab</span>
+                        <span className="text-sm font-bold text-gray-900">
+                          {minPrice.toFixed(2).replace('.', ',')} €
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-400">n.v.</span>
+                    )
                   )}
                   <div className="flex items-center gap-1">
                     <div className={`w-1.5 h-1.5 rounded-full ${STOCK_DOT[product.stockLevel]}`} />
@@ -369,21 +533,12 @@ export default function Home() {
                       {STOCK_LABEL[product.stockLevel]}
                     </span>
                   </div>
-                  {inStock && (
-                    <button
-                      onClick={() => navigate(`/reserve/${product.id}`)}
-                      className="text-[10px] font-bold px-2.5 py-0.5 rounded-full text-white"
-                      style={{ background: '#E05C00' }}
-                    >
-                      Reservieren
-                    </button>
-                  )}
                 </div>
               </div>
             )
           })}
 
-          {filteredProducts.length === 0 && (
+          {uniqueProducts.length === 0 && (
             <div className="text-center py-10">
               <p className="text-2xl mb-2">🔍</p>
               <p className="text-sm font-semibold text-gray-500 mb-1">Keine Produkte gefunden</p>
